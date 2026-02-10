@@ -481,7 +481,8 @@ class Routepermissions extends \FreePBX\FreePBX_Helpers implements \FreePBX\BMO
             "errormessage"=>$errormessage,
             "rp"=>$this,
             "routes"=>$this->getRoutes(),
-        );
+            "current_permissions" => $this->getAllPermissions(),
+	);
         
         // FIX: ESTA LÍNEA ES CRUCIAL. Extrae el array a variables locales ($routes, $message, etc.)
         // para que settings13.php las pueda ver.
@@ -490,6 +491,18 @@ class Routepermissions extends \FreePBX\FreePBX_Helpers implements \FreePBX\BMO
         // Ensure the view file exists before loading
         if (file_exists("$cwd/views/settings13.php")) {
             include "$cwd/views/settings13.php";
+        }
+    }
+
+    public function getAllPermissions()
+    {
+        // Obtener todos los permisos, excluyendo la configuración por defecto (-1)
+        $sql = "SELECT * FROM routepermissions WHERE exten != '-1' ORDER BY exten ASC, routename ASC";
+        try {
+            $result = $this->db->query($sql);
+            return $result->fetchAll(\PDO::FETCH_ASSOC);
+        } catch (\PDOException $e) {
+            return array();
         }
     }
 

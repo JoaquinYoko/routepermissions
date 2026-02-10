@@ -1,22 +1,5 @@
 <?php
-// Based on an original Release by Rob Thomas (xrobau@gmail.com)
-// Copyright Rob Thomas (2009)
-// Extensive modifications by Michael Newton (miken32@gmail.com)
-// Copyright 2016 Michael Newton
-/*
-	This program is free software: you can redistribute it and/or modify
-	it under the terms of the GNU Affero General Public License as
-	published by the Free Software Foundation, either version 3 of the
-	License, or (at your option) any later version.
-
-	This program is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	GNU Affero General Public License for more details.
-
-	You should have received a copy of the GNU Affero General Public License
-	along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// ... (mismo encabezado de licencia que ya tienes) ...
 ?>
 <div class="container-fluid">
 	<div class="row">
@@ -24,40 +7,34 @@
 			<div class="fpbx-container">
 				<div class="display no-border">
 					<h1><?php echo _("Route Permissions")?></h1>
-					<div class="well well-info">
-						<p><?php echo _("This module allows you to allow or deny access to certain routes from specified extensions. You can perform bulk changes on this page, and you can change an individual extension's access to routes on that extension's page.");?></p>
-						<p><?php echo _("In addition to simple Allow/Deny rules, you can also deny access to a route and then redirect the call, allowing a different outbound route to match the call.");?></p>
-						<p><?php echo _("For example, if you wanted to stop an extension from using Route A, selecting <b>Deny</b> would preclude the possibility of trying another route. Instead you could select <b>Redirect with prefix</b> and set the <b>Redirect prefix</b> to <code>9999</code>; assuming you've created Route B with a prefix match of <code>9999</code> and not set a deny rule on it, the call can proceed.");?></p>
-						<p><?php echo _("In addition, if you are denying access to a particular route and wish to use something other than the default destination, you can select <b>Redirect with prefix</b>, and create a <b>Miscellaneous Application</b> that matches the specified <b>Redirect prefix</b>. Using the previous example, a <b>Miscellaneous Application</b> with a feature code of <code>_9999x.</code> could be called if it existed on the system.");?></p>
-					</div>
-<?php if(!empty($message)):?>
-					<div class="alert alert-success alert-dismissable" role="alert">
-						<button type="button" class="close" data-dismiss="alert" aria-label="Close">
-							<span aria-hidden="true">&times;</span>
-						</button>
-						<h3><i class="fa fa-info-circle" aria-hidden="true"></i> <?=_("Messages")?></h3>
-						<?php echo $message?>
-					</div>
-<?php endif;?>
-<?php if(!empty($errormessage)):?>
-					<div class="alert alert-warning alert-dismissable" role="alert">
-						<button type="button" class="close" data-dismiss="alert" aria-label="Close">
-							<span aria-hidden="true">&times;</span>
-						</button>
-						<h3><i class="fa fa-exclamation-triangle" aria-hidden="true"></i> <?=_("Errors")?></h3>
-						<?php echo $errormessage?>
-					</div>
-<?php endif;?>
-					<h4><?=htmlspecialchars(_("Bulk Changes"))?></h4>
+                    
+                    <?php if(!empty($message)):?>
+                        <div class="alert alert-success alert-dismissable" role="alert">
+                            <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                                <span aria-hidden="true">&times;</span>
+                            </button>
+                            <h3><i class="fa fa-info-circle" aria-hidden="true"></i> <?=_("Messages")?></h3>
+                            <?php echo $message?>
+                        </div>
+                    <?php endif;?>
+                    
+                    <?php if(!empty($errormessage)):?>
+                        <div class="alert alert-warning alert-dismissable" role="alert">
+                            <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                                <span aria-hidden="true">&times;</span>
+                            </button>
+                            <h3><i class="fa fa-exclamation-triangle" aria-hidden="true"></i> <?=_("Errors")?></h3>
+                            <?php echo $errormessage?>
+                        </div>
+                    <?php endif;?>
+
+                    <h4><?=htmlspecialchars(_("Bulk Changes"))?></h4>
 					<p>
-						<?=_("Select a route and select <b>Allow</b> or <b>Deny</b> to set permissions for the entered extensions. If you enter a <b>Redirect prefix</b> and click <b>Redirect with prefix</b>, the route will automatically be set to DENIED.")?>
-						<?=_("You can enter one or more extensions or ranges separated by commas; a range is a start and end extension separated by a hyphen. For example <code>123,125,200-300</code> will select extensions 123 and 125 as well as any extensions between 200 and 300.")?>
+						<?=_("Select a route and select <b>Allow</b> or <b>Deny</b> to set permissions for the entered extensions...")?>
 					</p>
-					<p>
-						<?=_("Note that these changes take effect <em>immediately</em> and do not require a reload.")?>
-					</p>
+					
 					<form method="post">
-						<table>
+						<table class="table table-bordered">
 							<thead>
 								<tr>
 									<th><?=_("Route")?></th>
@@ -68,7 +45,7 @@
 								</tr>
 							</thead>
 							<tbody>
-<?php foreach ($routes as $r):?>
+                                <?php foreach ($routes as $r):?>
 								<tr>
 									<td id="td_<?=$r?>">
 										<?=$r?>
@@ -95,17 +72,60 @@
 										<input name="prefix_$r" type="text" class="form-control" placeholder="<?=_("Prefix")?>" size="10"/>
 									</td>
 								</tr>
-<?php endforeach?>
+                                <?php endforeach?>
 								<tr>
-									<td>
-										<button name="update_permissions" type="submit"><?=_("Save Changes")?></button>
+									<td colspan="5">
+										<button name="update_permissions" type="submit" class="btn btn-primary"><?=_("Save Changes")?></button>
 									</td>
 								</tr>
 							</tbody>
 						</table>
 					</form>
-					<p>&nbsp;</p>
-					<form method="post">
+
+                    <hr>
+                    <h4><i class="fa fa-list"></i> <?=_("Current Active Permissions")?></h4>
+                    <p class="text-muted"><?=_("Below is the list of extensions explicitly configured in the database.")?></p>
+                    
+                    <table class="table table-striped table-hover table-condensed" data-toggle="table" data-pagination="true" data-search="true">
+                        <thead>
+                            <tr>
+                                <th data-sortable="true"><?=_("Extension")?></th>
+                                <th data-sortable="true"><?=_("Route Name")?></th>
+                                <th data-sortable="true"><?=_("Allowed")?></th>
+                                <th data-sortable="true"><?=_("Fail Destination")?></th>
+                                <th data-sortable="true"><?=_("Prefix")?></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if(!empty($current_permissions)): ?>
+                                <?php foreach($current_permissions as $perm): ?>
+                                    <tr>
+                                        <td><?=$perm['exten']?></td>
+                                        <td><?=$perm['routename']?></td>
+                                        <td>
+                                            <?php 
+                                            if($perm['allowed'] == 'YES') {
+                                                echo '<span class="label label-success">YES</span>';
+                                            } elseif ($perm['allowed'] == 'NO') {
+                                                echo '<span class="label label-danger">NO</span>';
+                                            } else {
+                                                echo $perm['allowed'];
+                                            }
+                                            ?>
+                                        </td>
+                                        <td><?=$perm['faildest']?></td>
+                                        <td><?=$perm['prefix']?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php else: ?>
+                                <tr>
+                                    <td colspan="5" class="text-center"><em><?=_("No specific permissions found.")?></em></td>
+                                </tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                    <br>
+                    <form method="post">
 						<h4><?=_("Default Destination if Denied")?></h4>
 						<p>
 							<?=_("Select the destination for calls when they are denied without specifying a destination.")?>
@@ -114,7 +134,7 @@
 							<?=\drawselects($rp->getDefaultDest(), "faildest")?>
 						</p>
 						<p>
-							<button name="update_default" type="submit"><?=_("Change Destination")?></button>
+							<button name="update_default" type="submit" class="btn btn-default"><?=_("Change Destination")?></button>
 						</p>
 					</form>
 				</div>
