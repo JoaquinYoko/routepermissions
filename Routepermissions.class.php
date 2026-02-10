@@ -86,10 +86,13 @@ class Routepermissions extends \FreePBX\FreePBX_Helpers implements \FreePBX\BMO
         } else {
             outn(_("New install, populating default allow permission&hellip; "));
             $extens = array();
+            // PHP 8 Fix: getAllUsersByDeviceType returns objects or arrays depending on version, handle safely
             $devices = \FreePBX::Core()->getAllUsersByDeviceType();
             foreach($devices as $exten) {
-                if ($exten['id']) {
-                    $extens[] = $exten['id'];
+                // Handle object or array access
+                $id = is_object($exten) ? $exten->id : (isset($exten['id']) ? $exten['id'] : null);
+                if ($id) {
+                    $extens[] = $id;
                 }
             }
             try {
@@ -98,7 +101,8 @@ class Routepermissions extends \FreePBX\FreePBX_Helpers implements \FreePBX\BMO
                 $stmt = $this->db->prepare($query);
                 foreach($extens as $ext) {
                     foreach ($routes as $r) {
-                        $this->db->execute($stmt, array($ext, $r["name"]));
+                        // FIX: Execute on statement, not on db object
+                        $stmt->execute(array($ext, $r["name"]));
                     }
                 }
             } catch (\Exception $e) {
@@ -230,7 +234,7 @@ class Routepermissions extends \FreePBX\FreePBX_Helpers implements \FreePBX\BMO
                 } else {
                     $allowed = "YES";
                     $faildest = "";
-                    $prefix = ""; // Ensure variable is defined
+                    $prefix = "";
                 }
                 if ($allowed === "NO" && !empty($prefix)) {
                     $allowed = "REDIRECT";
@@ -241,7 +245,6 @@ class Routepermissions extends \FreePBX\FreePBX_Helpers implements \FreePBX\BMO
                 $redirect = _("Redirect w/prefix");
                 $i += 10;
                 
-                // Fixed JS string for compatibility
                 $js = '$("input[name=" + this.name.replace(/^routepermissions_perm_(\d+)-(.*)$/, "routepermissions_prefix_$1-$2") + "]").val("").prop("disabled", (this.value !== "REDIRECT")).prop("required", (this.value === "REDIRECT"));var id=$("select[name=" + $("#" + this.name.replace(/^routepermissions_perm_(\d+)-(.*)$/, "routepermissions_faildest_$1-$2")).val() + "]").val("").change().prop("disabled", (this.value !== "NO")).data("id");$("select[data-id=" + id + "]").prop("disabled", (this.value !== "NO"))';
                 
                 $radio = new \gui_radio(
@@ -406,8 +409,9 @@ class Routepermissions extends \FreePBX\FreePBX_Helpers implements \FreePBX\BMO
                     case "NO":
                         if (isset($request["goto_$route"])) {
                             $type = $request["goto_$route"];
-                            if (isset($request["${type}_$route"])) {
-                                $redir = $request["${type}_$route"];
+                            // FIX: ${var} syntax deprecated in PHP 8.2
+                            if (isset($request["{$type}_$route"])) {
+                                $redir = $request["{$type}_$route"];
                             }
                         }
                         break;
@@ -478,6 +482,11 @@ class Routepermissions extends \FreePBX\FreePBX_Helpers implements \FreePBX\BMO
             "rp"=>$this,
             "routes"=>$this->getRoutes(),
         );
+        
+        // FIX: ESTA LÍNEA ES CRUCIAL. Extrae el array a variables locales ($routes, $message, etc.)
+        // para que settings13.php las pueda ver.
+        extract($viewdata);
+
         // Ensure the view file exists before loading
         if (file_exists("$cwd/views/settings13.php")) {
             include "$cwd/views/settings13.php";
