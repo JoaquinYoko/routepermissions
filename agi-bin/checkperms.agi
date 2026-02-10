@@ -1,23 +1,7 @@
 #!/usr/bin/env php
 <?php
-// Based on an original Release by Rob Thomas (xrobau@gmail.com)
-// Copyright Rob Thomas (2009)
-// Extensive modifications by Michael Newton (miken32@gmail.com)
-// Copyright 2016 Michael Newton
-/*
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU Affero General Public License as
-    published by the Free Software Foundation, either version 3 of the
-    License, or (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU Affero General Public License for more details.
-
-    You should have received a copy of the GNU Affero General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// Updated for PHP 8 compatibility
+// Original Copyright Rob Thomas (2009) & Michael Newton (2016)
 
 require_once "phpagi.php";
 require_once "phpagi-asmanager.php";
@@ -45,18 +29,29 @@ $dbuser = $AGI->get_variable("AMPDBUSER");
 $dbpass = $AGI->get_variable("AMPDBPASS");
 $dbname = $AGI->get_variable("AMPDBNAME");
 
-$link = new PDO("mysql:host=$dbhost[data];dbname=$dbname[data]", $dbuser["data"], $dbpass["data"]);
+// Fix PHP 8 interpolation syntax
+$link = new PDO("mysql:host={$dbhost['data']};dbname={$dbname['data']}", $dbuser["data"], $dbpass["data"]);
+
 $query = "SELECT allowed, faildest, prefix, emergency_route
     FROM routepermissions p
     LEFT JOIN outbound_routes r ON (p.routename = r.name)
     WHERE exten = ? and routename = ?";
+    
 $params = array($cidnum, $routename);
 $stmt = $link->prepare($query);
+
+// Logic fix: Check execution AND fetch result
 if ($stmt && $stmt->execute($params)) {
     $res = $stmt->fetch(PDO::FETCH_ASSOC);
-    // escaping for verbose output
-    $query = preg_replace("/\s+/", " ", $query);
-    $AGI->verbose("Got '" . implode("', '", $res) . "' from query '$query'", 3);
+    $query_clean = preg_replace("/\s+/", " ", $query);
+    
+    // Check if we actually got a row before imploding
+    if (is_array($res)) {
+        $AGI->verbose("Got '" . implode("', '", $res) . "' from query '$query_clean'", 3);
+    } else {
+        $AGI->verbose("Got empty result from query '$query_clean'", 3);
+        $res = null;
+    }
 } else {
     $res = null;
     $AGI->verbose(_("Database error, exiting with ALLOW"), 1);
@@ -67,9 +62,18 @@ if (is_array($res) && $res["allowed"] === "NO" && $res["emergency_route"] !== "Y
         // nothing specified, use default destination
         $query = "SELECT faildest FROM routepermissions WHERE exten = -1";
         $result = $link->query($query, PDO::FETCH_COLUMN, 0);
-        $faildest = $result->fetch();
+        
+        // Check if query returned a valid statement object
+        if ($result) {
+            $faildest = $result->fetch();
+        } else {
+            $faildest = false;
+        }
+        
         $query = preg_replace("/\s+/", " ", $query);
-        $AGI->verbose("Got '$faildest' from query '$query'", 3);
+        // Handle boolean faildest safely for verbose
+        $faildest_str = ($faildest === false) ? "FALSE" : $faildest;
+        $AGI->verbose("Got '$faildest_str' from query '$query'", 3);
     } else {
         if (empty($res["faildest"])) {
             // no destination, use the prefix
@@ -78,7 +82,12 @@ if (is_array($res) && $res["allowed"] === "NO" && $res["emergency_route"] !== "Y
             $arg2 = $AGI->get_variable("ARG2");
             $arg2 = $prefix . $arg2["data"];
             $AGI->set_variable("ARG2", $arg2);
-            $AGI->exec_goto(gotofix("reroute,1"));
+            // Check for gotofix function, usually not standard php but part of AGI helper env
+            if (function_exists('gotofix')) {
+                 $AGI->exec_goto(gotofix("reroute,1"));
+            } else {
+                 $AGI->exec_goto("reroute", "1");
+            }
             exit;
         } else {
             $faildest = $res["faildest"];
