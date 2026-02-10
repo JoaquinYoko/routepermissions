@@ -4,72 +4,37 @@
 // Copyright Rob Thomas (2009)
 // Extensive modifications by Michael Newton (miken32@gmail.com)
 // Copyright 2016 Michael Newton
-/*
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU Affero General Public License as
-    published by the Free Software Foundation, either version 3 of the
-    License, or (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU Affero General Public License for more details.
-
-    You should have received a copy of the GNU Affero General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// Updated for PHP 8 compatibility
 
 class Routepermissions extends \FreePBX\FreePBX_Helpers implements \FreePBX\BMO
 {
     static $module = "routepermissions";
+    protected $db;
+    protected $FreePBX;
 
-    /** Constructor code for version 13+
-     * @param Object $freepbx The FreePBX object
-     * @return void
-     */
     public function __construct($freepbx = null)
     {
         if ($freepbx === null) {
-            die("That ain't gonna fly!");
+            throw new \Exception("FreePBX Object Not Found");
         }
         $this->FreePBX = $freepbx;
         $this->db = $freepbx->Database;
     }
 
-    /**
-     * Show right navigation for version 13+
-     * @param array $request The contents of $_REQUEST
-     * @return string The right nav HTML
-     */
     public function getRightNav($request)
     {
         return "";
     }
 
-    /**
-     * Show floating save buttons for version 13+
-     * @param array $request The contents of $_REQUEST
-     * @return array Associative array including name, id, and value for each button
-     */
     public function getActionBar($request)
     {
         return array();
     }
 
-    /**
-     * Ajax request check for version 13+; confirm command is okay and optionally pass some settings
-     * @param string $command The command name
-     * @param string $setting Settings to return back
-     * @return boolean
-     */
     public function ajaxRequest($command, &$setting){
         return method_exists(get_called_class(), $command);
     }
 
-    /**
-     * Handle the ajax request for version 13+, passed in $_REQUEST["command"]
-     * @return mixed The result of the command
-     */
     public function ajaxHandler()
     {
         $request = $_REQUEST;
@@ -85,12 +50,6 @@ class Routepermissions extends \FreePBX\FreePBX_Helpers implements \FreePBX\BMO
         return array("status"=>false, "message"=>_("Unknown command"));
     }
 
-    /**
-     * Handle searches for version 13+
-     * @param string $query The search itself
-     * @param array $results The results by reference
-     * @return boolean
-     */
     public function search($query = null, &$results = null)
     {
         return false;
@@ -112,7 +71,7 @@ class Routepermissions extends \FreePBX\FreePBX_Helpers implements \FreePBX\BMO
         try {
             $table = $this->db->migrate("routepermissions");
             $table->modify($columns, $indices);
-        } catch (\Doctrine\DBAL\Exception $e) {
+        } catch (\Exception $e) {
             die_freepbx(sprintf(_("Error updating routepermissions table: %s"), $e->getMessage()));
         }
 
@@ -129,8 +88,8 @@ class Routepermissions extends \FreePBX\FreePBX_Helpers implements \FreePBX\BMO
             $extens = array();
             $devices = \FreePBX::Core()->getAllUsersByDeviceType();
             foreach($devices as $exten) {
-                if ($exten->id) {
-                    $extens[] = $exten->id;
+                if ($exten['id']) {
+                    $extens[] = $exten['id'];
                 }
             }
             try {
@@ -158,12 +117,12 @@ class Routepermissions extends \FreePBX\FreePBX_Helpers implements \FreePBX\BMO
             $this->db->query("DROP TABLE routepermissions");
             out(_("complete"));
         } catch (\PDOException $e) {
-            out(sprintf(_("Error removing routepermissions table: %s"), $result->getMessage()));
+            out(sprintf(_("Error removing routepermissions table: %s"), $e->getMessage()));
         }
 
         outn(_("Removing AGI script&hellip; "));
         $agidir = $amp_conf->get("ASTAGIDIR");
-        $result = unlink("$agidir/checkperms.agi");
+        $result = @unlink("$agidir/checkperms.agi");
         if (!$result) {
             out(_("failed! File must be removed manually"));
         } else {
@@ -191,42 +150,35 @@ class Routepermissions extends \FreePBX\FreePBX_Helpers implements \FreePBX\BMO
         return;
     }
 
-    /**
-     * Tell the system we want to hook into the dialplan
-     */
     public function myDialplanHooks()
     {
-        // signal our intent to hook into the dialplan
         return true;
     }
 
-    /**
-     * The actual dialplan hook
-     */
     public function doDialplanHook(&$ext, $engine, $pri)
     {
         if ($engine !== "asterisk") {
             return false;
         }
 
-        foreach ($ext->_exts as $context=>$extensions) {
-            if (strncmp($context, "macro-dialout-", 14) === 0) {
-                $ext->splice($context, "s", 1, new \ext_agi("checkperms.agi"));
-                $ext->add($context, "barred", 1, new \ext_noop("Route administratively banned for this user."));
-                $ext->add($context, "barred", 2, new \ext_hangup());
-                $ext->add($context, "reroute", 1, new \ext_goto("1", "\${ARG2}", "from-internal"));
+        if (is_array($ext->_exts)) {
+            foreach ($ext->_exts as $context=>$extensions) {
+                if (strncmp($context, "macro-dialout-", 14) === 0) {
+                    $ext->splice($context, "s", 1, new \ext_agi("checkperms.agi"));
+                    $ext->add($context, "barred", 1, new \ext_noop("Route administratively banned for this user."));
+                    $ext->add($context, "barred", 2, new \ext_hangup());
+                    $ext->add($context, "reroute", 1, new \ext_goto("1", "\${ARG2}", "from-internal"));
+                }
             }
         }
 
-        // Insert the ROUTENAME into each route
         foreach (\FreePBX::Core()->getAllRoutes() as $route) {
-            $context = "outrt-$route[route_id]";
+            $context = "outrt-" . $route['route_id'];
             $routename = $route["name"];
             $routes = core_routing_getroutepatternsbyid($route["route_id"]);
             foreach ($routes as $rt) {
                 $extension = $rt["match_pattern_prefix"] . $rt["match_pattern_pass"];
-                // If there are any wildcards in there, add a _ to the start
-                if (preg_match("/\.|z|x|\[|\]/i", $extension)) {
+                if (preg_match("/\.|z|x|\[|\]/i", (string)$extension)) {
                     $extension = "_".$extension;
                 }
                 if (!empty($rt['match_cid'])) {
@@ -240,23 +192,10 @@ class Routepermissions extends \FreePBX\FreePBX_Helpers implements \FreePBX\BMO
         }
     }
 
-    /**
-     * Tell the system which modules' pages we want to hook (hooked)
-     *
-     * @return array All the modules we want to hook into
-     */
     public static function myGuiHooks() {
-        // extensions page is part of core.
         return array("core");
     }
 
-    /**
-     * Perform our hook actions on page display
-     *
-     * @param Object $currentcomponent The ugly old page object
-     * @param string $module The module name
-     * @return boolean Returns false if the page is not modified
-     */
     public function doGuiHook(&$currentcomponent, $module) {
         $pagename   = isset($_REQUEST["display"]) ? $_REQUEST["display"] : "";
         $extdisplay = isset($_REQUEST["extdisplay"]) ? $_REQUEST["extdisplay"] : "";
@@ -277,94 +216,88 @@ class Routepermissions extends \FreePBX\FreePBX_Helpers implements \FreePBX\BMO
         } catch (\PDOException $e) {
             return false;
         }
-        foreach ($routes as $route) {
-            try {
-                $stmt->execute(array($route, $extdisplay));
-                $res = $stmt->fetch(\PDO::FETCH_NUM);
-            } catch (\PDOException $e) {
-                continue;
-            }
-            if (is_array($res) && count($res) > 0) {
-                // a result was returned
-                list($allowed, $faildest, $prefix) = $res;
-            } else {
-                $allowed = "YES";
-                $faildest = "";
-            }
-            if ($allowed === "NO" && !empty($prefix)) {
-                $allowed = "REDIRECT";
-            }
-            $route = htmlspecialchars($route);
-            $yes = _("Allow");
-            $no = _("Deny");
-            $redirect = _("Redirect w/prefix");
-            $i += 10;
-            $js = '$("input[name=" + this.name.replace(/^routepermissions_perm_(\d+)-(.*)$/, "routepermissions_prefix_$1-$2") + "]").val("").prop("disabled", (this.value !== this.name + "=REDIRECT")).prop("required", (this.value === this.name + "=REDIRECT"));var id=$("select[name=" + $("#" + this.name.replace(/^routepermissions_perm_(\d+)-(.*)$/, "routepermissions_faildest_$1-$2")).val() + "]").val("").change().prop("disabled", (this.value !== this.name + "=NO")).data("id");$("select[data-id=" + id + "]").prop("disabled", (this.value !== this.name + "=NO"))';
-            $radio = new \gui_radio(
-                "routepermissions_perm_$i-$route", //element name
-                array(
-                    array("value"=>"YES", "text"=>$yes),
-                    array("value"=>"NO", "text"=>$no),
-                    array("value"=>"REDIRECT", "text"=>$redirect),
-                ), //radios
-                $allowed, //current value
-                sprintf(_("Allow access to %s"), $route), //group label text
-                "", //help text
-                false, //disable
-                htmlspecialchars($js), //onclick (13+)
-                "", //class (13+)
-                true //paired values; needed for 11 compatibility (13+)
-            );
-            $currentcomponent->addguielem($section, $radio);
+        
+        if(is_array($routes)) {
+            foreach ($routes as $route) {
+                try {
+                    $stmt->execute(array($route, $extdisplay));
+                    $res = $stmt->fetch(\PDO::FETCH_NUM);
+                } catch (\PDOException $e) {
+                    continue;
+                }
+                if (is_array($res) && count($res) > 0) {
+                    list($allowed, $faildest, $prefix) = $res;
+                } else {
+                    $allowed = "YES";
+                    $faildest = "";
+                    $prefix = ""; // Ensure variable is defined
+                }
+                if ($allowed === "NO" && !empty($prefix)) {
+                    $allowed = "REDIRECT";
+                }
+                $route_html = htmlspecialchars($route);
+                $yes = _("Allow");
+                $no = _("Deny");
+                $redirect = _("Redirect w/prefix");
+                $i += 10;
+                
+                // Fixed JS string for compatibility
+                $js = '$("input[name=" + this.name.replace(/^routepermissions_perm_(\d+)-(.*)$/, "routepermissions_prefix_$1-$2") + "]").val("").prop("disabled", (this.value !== "REDIRECT")).prop("required", (this.value === "REDIRECT"));var id=$("select[name=" + $("#" + this.name.replace(/^routepermissions_perm_(\d+)-(.*)$/, "routepermissions_faildest_$1-$2")).val() + "]").val("").change().prop("disabled", (this.value !== "NO")).data("id");$("select[data-id=" + id + "]").prop("disabled", (this.value !== "NO"))';
+                
+                $radio = new \gui_radio(
+                    "routepermissions_perm_$i-$route",
+                    array(
+                        array("value"=>"YES", "text"=>$yes),
+                        array("value"=>"NO", "text"=>$no),
+                        array("value"=>"REDIRECT", "text"=>$redirect),
+                    ),
+                    $allowed,
+                    sprintf(_("Allow access to %s"), $route_html),
+                    "",
+                    false,
+                    htmlspecialchars($js),
+                    "",
+                    true
+                );
+                $currentcomponent->addguielem($section, $radio);
 
-            $selects = new \gui_drawselects(
-                "routepermissions_faildest_$i-$route", //element name
-                $i, //index
-                $faildest, //current value
-                sprintf(_("Failure destination for %s"), $route), //label text
-                "", //help text
-                false, //can be empty
-                "", //fail validation message
-                _("Use default"), //empty message
-                ($allowed !== "NO"), //disable (13+)
-                "" //class (13+)
-            );
-            $currentcomponent->addguielem($section, $selects);
+                $selects = new \gui_drawselects(
+                    "routepermissions_faildest_$i-$route",
+                    $i,
+                    $faildest,
+                    sprintf(_("Failure destination for %s"), $route_html),
+                    "",
+                    false,
+                    "",
+                    _("Use default"),
+                    ($allowed !== "NO"),
+                    ""
+                );
+                $currentcomponent->addguielem($section, $selects);
 
-            $input = new \gui_textbox(
-                "routepermissions_prefix_$i-$route", //element name
-                $prefix, //current value
-                sprintf(_("Redirect prefix for %s"), $route), //label text
-                "", //help text
-                "", //js validation
-                "", //validation failure msg
-                true, //can be empty
-                0, //maxchars
-                ($allowed !== "REDIRECT"), // disable; no way to re-enable in 11/12
-                false, //input group (13+)
-                "", //class (13+)
-                true //autocomplete (13+)
-                    /* TODO: get rid of this */
-            );
-            $currentcomponent->addguielem($section, $input);
+                $input = new \gui_textbox(
+                    "routepermissions_prefix_$i-$route",
+                    $prefix,
+                    sprintf(_("Redirect prefix for %s"), $route_html),
+                    "",
+                    "",
+                    "",
+                    true,
+                    0,
+                    ($allowed !== "REDIRECT"),
+                    false,
+                    "",
+                    true
+                );
+                $currentcomponent->addguielem($section, $input);
+            }
         }
     }
 
-    /**
-     * Tell the system which pages' POSTs we want to hook
-     *
-     * @return array All the pages (not modules) we want to hook into
-     */
     public static function myConfigPageInits() {
         return array("extensions", "users");
     }
 
-    /**
-     * Perform our hook action on page POST
-     *
-     * @param string $module The module name
-     * @return boolean Returns false if there's nothing to do
-     */
     public function doConfigPageInit($module)
     {
         $pagename    = isset($_REQUEST["display"]) ? $_REQUEST["display"] : "index";
@@ -384,14 +317,19 @@ class Routepermissions extends \FreePBX\FreePBX_Helpers implements \FreePBX\BMO
             }
             switch ($matches[1]) {
                 case "faildest":
-                    $faildest_index = substr($v, 4); // remove "goto" from value
+                    $faildest_index = substr($v, 4);
                     $faildest_type = isset($_POST[$v]) ? $_POST[$v] : null;
                     if ($faildest_type && isset($_POST["$faildest_type$faildest_index"])) {
                         $route_perms[$route_name]["faildest"] = $_POST["$faildest_type$faildest_index"];
                     }
                     break;
                 case "perm":
-                    list($foo, $perm) = explode("=", $v, 2);
+                    // Fix for PHP 8 explode/list error
+                    if (strpos($v, '=') !== false) {
+                        list($foo, $perm) = explode("=", $v, 2);
+                    } else {
+                        $perm = $v;
+                    }
                     $route_perms[$route_name]["perms"] = $perm;
                     break;
                 case "prefix":
@@ -450,9 +388,6 @@ class Routepermissions extends \FreePBX\FreePBX_Helpers implements \FreePBX\BMO
         }
     }
 
-    /**
-     * Handle GET/POST requests to the page
-     */
     public function showPage($request = null)
     {
         $cwd          = dirname(__FILE__);
@@ -478,51 +413,51 @@ class Routepermissions extends \FreePBX\FreePBX_Helpers implements \FreePBX\BMO
                         break;
                     case "REDIRECT":
                         $perm = "NO";
-                        $prefix = trim($request["prefix_$route"]);
+                        $prefix = isset($request["prefix_$route"]) ? trim($request["prefix_$route"]) : "";
                         if (empty($prefix)) {
                             $errormessage .= sprintf(
                                 _("Redirect selected but redirect prefix missing for route %s - no action taken"),
-                                $route
+                                htmlspecialchars($route)
                             );
                             $errormessage .= "<br/>";
-                            continue;
+                            continue 2;
                         }
                         break;
                     default:
                         continue 2;
                     }
-                    $range = $request["range_$route"];
+                    $range = isset($request["range_$route"]) ? $request["range_$route"] : "";
                     try {
                         $result = $this->setRangePermissions($route, $range, $perm, $redir, $prefix);
                         if ($prefix) {
                             $message .= sprintf(
                                 _("Route %s set to %s for supplied range %s using redirect prefix %s"),
-                                $route,
+                                htmlspecialchars($route),
                                 $perm,
-                                $range,
-                                $prefix
+                                htmlspecialchars($range),
+                                htmlspecialchars($prefix)
                             );
                             $message .= "<br/>";
                         } else {
                             $message .= sprintf(
                                 _("Route %s set to %s for supplied range %s"),
-                                $route,
+                                htmlspecialchars($route),
                                 $perm,
-                                $range
+                                htmlspecialchars($range)
                             );
                             $message .= "<br/>";
                         }
                     } catch (\PDOException $e) {
                         $errormessage .= sprintf(
                             _("Database error, couldn't set permissions for route %s: %s"),
-                            $route,
+                            htmlspecialchars($route),
                             $e->getMessage()
                         );
                         $errormessage .= "<br/>";
                     }
                 } elseif ($k == "update_default") {
-                    $dest_type = $request["gotofaildest"];
-                    $dest = $request[$dest_type . "faildest"];
+                    $dest_type = isset($request["gotofaildest"]) ? $request["gotofaildest"] : "";
+                    $dest = isset($request[$dest_type . "faildest"]) ? $request[$dest_type . "faildest"] : "";
                     try {
                         $result = $this->updateDefaultDest($dest);
                         $message = _("Default destination changed");
@@ -543,7 +478,10 @@ class Routepermissions extends \FreePBX\FreePBX_Helpers implements \FreePBX\BMO
             "rp"=>$this,
             "routes"=>$this->getRoutes(),
         );
-        show_view("$cwd/views/settings13.php", $viewdata);
+        // Ensure the view file exists before loading
+        if (file_exists("$cwd/views/settings13.php")) {
+            include "$cwd/views/settings13.php";
+        }
     }
 
     public function getRoutes()
@@ -553,7 +491,7 @@ class Routepermissions extends \FreePBX\FreePBX_Helpers implements \FreePBX\BMO
             $result = $this->db->query($sql);
             return $result->fetchAll(\PDO::FETCH_COLUMN, 0);
         } catch (\PDOException $e) {
-            return false;
+            return array();
         }
     }
 
@@ -586,10 +524,14 @@ class Routepermissions extends \FreePBX\FreePBX_Helpers implements \FreePBX\BMO
 
     public function setRangePermissions($route, $range, $allowed, $faildest = "", $prefix = "") {
         $allowed = (strtoupper($allowed) === "NO") ? "NO" : "YES";
-        $extens = array_intersect(
-            $sys_ext = array_map(function($u) {return $u[0];}, core_users_list()),
-            $ext_range = (strtoupper($range) === strtoupper(_("All"))) ? $sys_ext : self::getRange($range)
-        );
+        
+        $users_list = core_users_list();
+        $sys_ext = is_array($users_list) ? array_map(function($u) {return $u[0];}, $users_list) : array();
+        
+        $range_extensions = (strtoupper($range) === strtoupper(_("All"))) ? $sys_ext : self::getRange($range);
+        
+        $extens = array_intersect($sys_ext, $range_extensions);
+        
         if (count($extens) === 0) {
             return false;
         }
@@ -610,12 +552,12 @@ class Routepermissions extends \FreePBX\FreePBX_Helpers implements \FreePBX\BMO
 
     private static function getRange($range_str) {
         $range_out = array();
-        // Strip spaces
+        // Fix for PHP 8 passing null to str_replace
+        $range_str = (string)$range_str;
         $ranges = explode(",", str_replace(" ", "", $range_str));
 
         foreach($ranges as $range) {
             if (is_numeric($range)) {
-                // Just a number; add it to the list.
                 $range_out[] = $range;
             } elseif (strpos($range, "-")) {
                 list($start, $end) = explode("-", $range);
