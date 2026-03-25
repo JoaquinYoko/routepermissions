@@ -69,7 +69,7 @@
 										<?=\drawselects("", "_$r", false, false, _("Use default"))?>
 									</td>
 									<td>
-										<input name="prefix_$r" type="text" class="form-control" placeholder="<?=_("Prefix")?>" size="10"/>
+										<input name="prefix_<?=$r?>" type="text" class="form-control" placeholder="<?=_("Prefix")?>" size="10"/>
 									</td>
 								</tr>
                                 <?php endforeach?>
